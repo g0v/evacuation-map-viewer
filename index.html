@@ -1,0 +1,50 @@
+<html>
+<head>
+<meta charset="utf-8">
+<title>台灣防災地圖</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/1.0.21/jquery.csv.min.js" integrity="sha512-Y8iWYJDo6HiTo5xtml1g4QqHtl/PO1w+dmUpQfQSOTqKNsMhExfyPN2ncNAe9JuJUSKzwK/b6oaNPop4MXzkwg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+縣市：<select id="county"></select>
+鄉鎮：<select id="town"></select>
+村里：<select id="village"></select>
+<script>
+var villages = [];
+var show_villages = function() {
+    $('#county').empty();
+    $('#town').empty();
+    $('#village').empty();
+
+    console.log(villages);
+    for (var village of villages) {
+        if ($('#county option[value="' + village.county + '"]').length == 0) {
+            $('#county').append($('<option>').val(village.county).text(village.county));
+        }
+    }
+};
+$.get('village.csv', function(data) {
+    villages = $.csv.toObjects(data);
+    show_villages();
+
+    navigator.geolocation.getCurrentPosition(function(position) {
+        lat = position.coords.latitude;
+        lon = position.coords.longitude;
+        for (var id in villages) {
+            villages[id].max_y = parseFloat(villages[id].max_y);
+            villages[id].min_y = parseFloat(villages[id].min_y);
+            villages[id].max_x = parseFloat(villages[id].max_x);
+            villages[id].min_x = parseFloat(villages[id].min_x);
+            v_lat = (villages[id].max_y + villages[id].min_y) / 2;
+            v_lon = (villages[id].max_x + villages[id].min_x) / 2;
+            villages[id].distance = Math.sqrt((v_lat - lat) ** 2 + (v_lon - lon) ** 2);
+        }
+        villages.sort((a, b) => a.distance - b.distance);
+        show_villages();
+
+        return position.coords;
+    });
+});
+</script>
+</body>
+</html>
