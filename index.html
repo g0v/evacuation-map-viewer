@@ -9,42 +9,168 @@
 縣市：<select id="county"></select>
 鄉鎮：<select id="town"></select>
 村里：<select id="village"></select>
+地圖類型：<select id="map_type"></select>
+<div id="map_not_found_alert" class="alert"></div>
+<div id="map_display"></div>
 <script>
 var villages = [];
 var show_villages = function() {
     $('#county').empty();
     $('#town').empty();
     $('#village').empty();
+    $('#map_type').empty();
 
-    console.log(villages);
+    $('#county').append($('<option>').val('').text('請選擇縣市'));
     for (var village of villages) {
-        if ($('#county option[value="' + village.county + '"]').length == 0) {
-            $('#county').append($('<option>').val(village.county).text(village.county));
+        if ($('#county option[value="' + village.COUNTYNAME + '"]').length == 0) {
+            $('#county').append($('<option>').val(village.COUNTYNAME).text(village.COUNTYNAME));
         }
     }
 };
-$.get('village.csv', function(data) {
-    villages = $.csv.toObjects(data);
-    show_villages();
 
-    navigator.geolocation.getCurrentPosition(function(position) {
-        lat = position.coords.latitude;
-        lon = position.coords.longitude;
-        for (var id in villages) {
-            villages[id].max_y = parseFloat(villages[id].max_y);
-            villages[id].min_y = parseFloat(villages[id].min_y);
-            villages[id].max_x = parseFloat(villages[id].max_x);
-            villages[id].min_x = parseFloat(villages[id].min_x);
-            v_lat = (villages[id].max_y + villages[id].min_y) / 2;
-            v_lon = (villages[id].max_x + villages[id].min_x) / 2;
-            villages[id].distance = Math.sqrt((v_lat - lat) ** 2 + (v_lon - lon) ** 2);
+// jQuery 監聽 county 下拉選單的變動
+$('#county').change(function() {
+    var county = $('#county').val();
+    $('#town').empty();
+    $('#village').empty();
+    $('#map_type').empty();
+    $('#town').append($('<option>').val('').text('請選擇鄉鎮'));
+    for (var village of villages) {
+        if (village.COUNTYNAME == county) {
+            if ($('#town option[value="' + village.TOWNNAME + '"]').length == 0) {
+                $('#town').append($('<option>').val(village.TOWNNAME).text(village.TOWNNAME));
+            }
         }
-        villages.sort((a, b) => a.distance - b.distance);
+    }
+});
+
+// 監聽 town 下拉選單的變動
+$('#town').change(function() {
+    var county = $('#county').val();
+    var town = $('#town').val();
+    $('#village').empty();
+    $('#map_type').empty();
+
+    $('#village').append($('<option>').val('').text('請選擇村里'));
+    for (var village of villages) {
+        if (village.COUNTYNAME == county && village.TOWNNAME == town) {
+            if ($('#village option[value="' + village.VILLCODE + '"]').length == 0) {
+                $('#village').append($('<option>').val(village.VILLCODE).text(village.VILLNAME));
+            }
+        }
+    }
+});
+
+// 監聽村里下拉選單的變動
+$('#village').change(function() {
+    get_maps();
+});
+
+$('#map_type').change(function() {
+    var county = $('#county').val();
+    var town = $('#town').val();
+    var village = $('#village').val();
+    var map_type = $('#map_type').val();
+
+    reset_map();
+
+    var map = logs.find(log => log.village_id == village && log.type == map_type);
+    if (map) {
+        $('#map_display').html(`
+            <a href="${map.url}" target="_blank">查看原始檔案</a><br>
+            <iframe class="map_iframe" src="https://ronnytest.ronny-s3.click/simple-evacuation-map/html/${village}-${map_type}/page-html.html"></iframe>
+        `);
+    } else {
+        $('#map_not_found_alert').html('找不到此村里的防災地圖');
+    }
+});
+
+// 透過 county, town, village 取得 maps 資料
+const get_maps = () => {
+    var county = $('#county').val();
+    var town = $('#town').val();
+    var village = $('#village').val();
+
+    reset_map();
+
+    
+    
+    var map_types = [];
+    for (var log of logs) {
+        if (log.village_id == village) {
+            map_types.push(log);
+        }
+    }
+
+    $('#map_type').empty();
+
+    if (map_types.length > 0) {
+        $('#map_type').append($('<option>').val('').text('請選擇地圖類型'));
+        map_types.forEach(log => {
+            $('#map_type').append($('<option>').val(log.type).text(log.type));
+        });
+    } else {
+        $('#map_type').append($('<option>').val('').text('找不到此村里的防災地圖'));
+    }
+
+    
+    
+}
+
+var logs = [];
+
+const init = async () => {
+    await $.get('village.csv', function(data) {
+        villages = $.csv.toObjects(data);
         show_villages();
 
-        return position.coords;
+        navigator.geolocation.getCurrentPosition(async function(position) {
+            lat = position.coords.latitude;
+            lon = position.coords.longitude;
+            for (var id in villages) {
+                villages[id].max_y = parseFloat(villages[id].max_y);
+                villages[id].min_y = parseFloat(villages[id].min_y);
+                villages[id].max_x = parseFloat(villages[id].max_x);
+                villages[id].min_x = parseFloat(villages[id].min_x);
+                v_lat = (villages[id].max_y + villages[id].min_y) / 2;
+                v_lon = (villages[id].max_x + villages[id].min_x) / 2;
+                villages[id].distance = Math.sqrt((v_lat - lat) ** 2 + (v_lon - lon) ** 2);
+            }
+            villages.sort((a, b) => a.distance - b.distance);
+            show_villages();
+
+            await $('#county').val(villages[0].COUNTYNAME).change();
+            await $('#town').val(villages[0].TOWNNAME).change();
+            await $('#village').val(villages[0].VILLCODE).change();
+
+            return position.coords;
+        });
     });
-});
+
+    await $.get('map-log.csv', function (data) {
+        logs = $.csv.toObjects(data);
+    });
+
+    get_maps();
+}
+
+
+init();
+
+const reset_map = () => {
+    $('.alert').text('');
+    $('#map_display').empty();
+};
 </script>
+<style>
+    .alert {
+        color: #ff0000;
+    }
+
+    .map_iframe{
+        width: 100%;
+        height: 90vh;
+    }
+</style>
 </body>
 </html>
